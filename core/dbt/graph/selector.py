@@ -61,7 +61,7 @@ class NodeSelector(MethodManager):
 
     def get_nodes_from_criteria(
         self,
-        spec: SelectionCriteria,
+        spec: SelectionCriteria
     ) -> Set[UniqueId]:
         """Get all nodes specified by the single selection criteria.
 
@@ -82,7 +82,7 @@ class NodeSelector(MethodManager):
             return set()
 
         extras = self.collect_specified_neighbors(spec, collected)
-        result = self.expand_selection(collected | extras)
+        result = self.expand_selection(collected | extras, spec.greedy)
         return result
 
     def collect_specified_neighbors(
@@ -106,7 +106,7 @@ class NodeSelector(MethodManager):
             additional.update(self.graph.select_children(selected, depth))
         return additional
 
-    def select_nodes(self, spec: SelectionSpec) -> Set[UniqueId]:
+    def select_nodes(self, spec: SelectionSpec, greedy_expansion: bool = False) -> Set[UniqueId]:
         """Select the nodes in the graph according to the spec.
 
         If the spec is a composite spec (a union, difference, or intersection),
@@ -162,12 +162,12 @@ class NodeSelector(MethodManager):
             unique_id for unique_id in selected if self._is_match(unique_id)
         }
 
-    def expand_selection(self, selected: Set[UniqueId]) -> Set[UniqueId]:
+    def expand_selection(self, selected: Set[UniqueId], greedy: bool = False) -> Set[UniqueId]:
         """Perform selector-specific expansion."""
         return selected
 
     def get_selected(self, spec: SelectionSpec) -> Set[UniqueId]:
-        """get_selected runs trhough the node selection process:
+        """get_selected runs through the node selection process:
 
             - node selection. Based on the include/exclude sets, the set
                 of matched unique IDs is returned
@@ -179,7 +179,8 @@ class NodeSelector(MethodManager):
                   selected
         """
         selected_nodes = self.select_nodes(spec)
-        filtered_nodes = self.filter_selection(selected_nodes)
+        expanded_nodes = self.expand_selection(selected_nodes)
+        filtered_nodes = self.filter_selection(expanded_nodes)
         return filtered_nodes
 
     def get_graph_queue(self, spec: SelectionSpec) -> GraphQueue:
