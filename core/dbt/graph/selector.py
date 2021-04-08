@@ -1,5 +1,5 @@
 
-from typing import Set, List, Optional
+from typing import Set, List, Optional, Tuple
 
 from .graph import Graph, UniqueId
 from .queue import GraphQueue
@@ -62,7 +62,7 @@ class NodeSelector(MethodManager):
     def get_nodes_from_criteria(
         self,
         spec: SelectionCriteria
-    ) -> (Set[UniqueId], Set[UniqueId]):
+    ) -> Tuple[Set[UniqueId], Set[UniqueId]]:
         """Get all nodes specified by the single selection criteria.
 
         - collect the directly included nodes
@@ -79,14 +79,14 @@ class NodeSelector(MethodManager):
                 f"The '{spec.method}' selector specified in {spec.raw} is "
                 f"invalid. Must be one of [{valid_selectors}]"
             )
-            return set()
+            return set(), set()
 
         neighbors = self.collect_specified_neighbors(spec, collected)
         result_nodes, greedy_nodes = self.expand_selection(
             selected=(collected | neighbors),
             greedy=spec.greedy
         )
-        return (result_nodes, greedy_nodes)
+        return result_nodes, greedy_nodes
 
     def collect_specified_neighbors(
         self, spec: SelectionCriteria, selected: Set[UniqueId]
@@ -109,7 +109,7 @@ class NodeSelector(MethodManager):
             additional.update(self.graph.select_children(selected, depth))
         return additional
 
-    def select_nodes_recursively(self, spec: SelectionSpec) -> (Set[UniqueId], Set[UniqueId]):
+    def select_nodes_recursively(self, spec: SelectionSpec) -> Tuple[Set[UniqueId], Set[UniqueId]]:
         """If the spec is a composite spec (a union, difference, or intersection),
         recurse into its selections and combine them. If the spec is a concrete
         selection criteria, resolve that using the given graph.
@@ -134,7 +134,7 @@ class NodeSelector(MethodManager):
             if spec.expect_exists:
                 alert_non_existence(spec.raw, direct_nodes)
 
-        return (direct_nodes, greedy_nodes)
+        return direct_nodes, greedy_nodes
 
     def select_nodes(self, spec: SelectionSpec) -> Set[UniqueId]:
         """Select the nodes in the graph according to the spec.
@@ -187,12 +187,12 @@ class NodeSelector(MethodManager):
 
     def expand_selection(
         self, selected: Set[UniqueId], greedy: bool = False
-    ) -> (Set[UniqueId], Set[UniqueId]):
+    ) -> Tuple[Set[UniqueId], Set[UniqueId]]:
         """Perform selector-specific expansion."""
         return selected, set()
 
     def incorporate_greedy_nodes(
-        self, selected: Set[UniqueId], greedily_grabbed: Set[UniqueId] = []
+        self, selected: Set[UniqueId], greedy_nodes: Set[UniqueId] = set()
     ) -> Set[UniqueId]:
         """Incorporate some nodes from greedy expansion."""
         return selected

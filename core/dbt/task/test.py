@@ -1,5 +1,5 @@
 import threading
-from typing import Dict, Any, Set
+from typing import Dict, Any, Set, Tuple
 
 from .compile import CompileRunner
 from .run import RunTask
@@ -161,7 +161,7 @@ class TestSelector(ResourceTypeSelector):
 
     def expand_selection(
         self, selected: Set[UniqueId], greedy: bool = False
-    ) -> (Set[UniqueId], Set[UniqueId]):
+    ) -> Tuple[Set[UniqueId], Set[UniqueId]]:
         # returns original (not greedy for inclusion)
         # or original | expanded (greedy for exclusion)
         # separately, returns greedy (to enable later incorporation or trimming)
@@ -175,10 +175,10 @@ class TestSelector(ResourceTypeSelector):
 
         results = (selected | selected_tests) if greedy else selected
 
-        return (results, selected_tests)
+        return results, selected_tests
 
     def incorporate_greedy_nodes(
-        self, selected: Set[UniqueId], greedy_nodes: Set[UniqueId] = []
+        self, selected: Set[UniqueId], greedy_nodes: Set[UniqueId] = set()
     ) -> Set[UniqueId]:
 
         for unique_id in greedy_nodes:
