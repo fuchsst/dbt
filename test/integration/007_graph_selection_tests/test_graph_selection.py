@@ -384,7 +384,7 @@ class TestGraphSelection(DBTIntegrationTest):
         assert sorted(results) == ['exposure:test.seed_ml_exposure', 'source:test.raw.seed']
 
         results = self.run_dbt(['ls', '--select', '1+exposure:user_exposure'])
-        assert len(results) == 3
+        assert len(results) == 5
         assert sorted(results) == ['exposure:test.user_exposure', 'test.users', 'test.users_rollup']
 
         self.run_dbt(['run', '-m', '+exposure:user_exposure'])

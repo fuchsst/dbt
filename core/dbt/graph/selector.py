@@ -82,11 +82,11 @@ class NodeSelector(MethodManager):
             return set(), set()
 
         neighbors = self.collect_specified_neighbors(spec, collected)
-        result_nodes, greedy_nodes = self.expand_selection(
+        direct_nodes, indirect_nodes = self.expand_selection(
             selected=(collected | neighbors),
             greedy=spec.greedy
         )
-        return result_nodes, greedy_nodes
+        return direct_nodes, indirect_nodes
 
     def collect_specified_neighbors(
         self, spec: SelectionCriteria, selected: Set[UniqueId]
@@ -115,38 +115,40 @@ class NodeSelector(MethodManager):
         selection criteria, resolve that using the given graph.
         """
         if isinstance(spec, SelectionCriteria):
-            direct_nodes, greedy_nodes = self.get_nodes_from_criteria(spec)
+            direct_nodes, indirect_nodes = self.get_nodes_from_criteria(spec)
         else:
             bundles = [
                 self.select_nodes_recursively(component)
                 for component in spec
             ]
-            direct_selections = []
-            greedy_selections = []
 
-            for selected, greedy in bundles:
-                direct_selections.append(selected)
-                greedy_selections.append(selected | greedy)
+            direct_sets = []
+            indirect_sets = []
 
-            direct_nodes = spec.combined(direct_selections)
-            greedy_nodes = spec.combined(greedy_selections)
+            for direct, indirect in bundles:
+                direct_sets.append(direct)
+                indirect_sets.append(direct | indirect)
+
+            initial_direct = spec.combined(direct_sets)
+            indirect_nodes = spec.combined(indirect_sets)
+
+            direct_nodes = self.incorporate_indirect_nodes(initial_direct, indirect_nodes)
 
             if spec.expect_exists:
                 alert_non_existence(spec.raw, direct_nodes)
 
-        return direct_nodes, greedy_nodes
+        return direct_nodes, indirect_nodes
 
     def select_nodes(self, spec: SelectionSpec) -> Set[UniqueId]:
         """Select the nodes in the graph according to the spec.
 
         This is the main point of entry for turning a spec into a set of nodes:
         - Recurse through spec, select by criteria, combine by set operation
-        - Keep track of nodes that are selected directly vs. "greedily"
         - Return final (unfiltered) selection set
         """
-        direct_nodes, greedy_nodes = self.select_nodes_recursively(spec)
-        result = self.incorporate_greedy_nodes(direct_nodes, greedy_nodes)
-        return result
+
+        direct_nodes, indirect_nodes = self.select_nodes_recursively(spec)
+        return direct_nodes
 
     def _is_graph_member(self, unique_id: UniqueId) -> bool:
         if unique_id in self.manifest.sources:
@@ -188,13 +190,46 @@ class NodeSelector(MethodManager):
     def expand_selection(
         self, selected: Set[UniqueId], greedy: bool = False
     ) -> Tuple[Set[UniqueId], Set[UniqueId]]:
-        """Perform selector-specific expansion."""
-        return selected, set()
+        # Test selection can expand to include an implicitly/indirectly selected test.
+        # In this way, `dbt test -m model_a` also includes tests that directly depend on `model_a`.
+        # Expansion has two modes, GREEDY and NOT GREEDY.
+        #
+        # GREEDY mode: If ANY parent is selected, select the test. We use this for EXCLUSION.
+        #
+        # NOT GREEDY mode:
+        #  - If ALL parents are selected, select the test.
+        #  - If ANY parent is missing, return it separately. We'll keep it around
+        #    for later and see if its other parents show up.
+        # We use this for INCLUSION.
 
-    def incorporate_greedy_nodes(
+        direct_nodes = selected
+        indirect_nodes = set()
+
+        for unique_id in self.graph.select_successors(selected):
+            if unique_id in self.manifest.nodes:
+                node = self.manifest.nodes[unique_id]
+                if node.resource_type == NodeType.Test:
+                    # should we add it in directly?
+                    if greedy or set(node.depends_on.nodes) <= set(selected):
+                        direct_nodes.add(unique_id)
+                    # if not:
+                    else:
+                        indirect_nodes.add(unique_id)
+
+        return direct_nodes, indirect_nodes
+
+    def incorporate_indirect_nodes(
         self, selected: Set[UniqueId], greedy_nodes: Set[UniqueId] = set()
     ) -> Set[UniqueId]:
-        """Incorporate some nodes from greedy expansion."""
+        # Check tests previously selected indirectly to see if ALL their
+        # parents are now present.
+
+        for unique_id in greedy_nodes:
+            if unique_id in self.manifest.nodes:
+                node = self.manifest.nodes[unique_id]
+                if set(node.depends_on.nodes) <= set(selected):
+                    selected.add(unique_id)
+
         return selected
 
     def get_selected(self, spec: SelectionSpec) -> Set[UniqueId]:

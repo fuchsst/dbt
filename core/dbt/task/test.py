@@ -1,5 +1,5 @@
 import threading
-from typing import Dict, Any, Set, Tuple
+from typing import Dict, Any
 
 from .compile import CompileRunner
 from .run import RunTask
@@ -26,7 +26,6 @@ from dbt.exceptions import (
 from dbt.graph import (
     ResourceTypeSelector,
     SelectionSpec,
-    UniqueId,
     parse_test_selectors,
 )
 from dbt.node_types import NodeType, RunHookType
@@ -158,36 +157,6 @@ class TestSelector(ResourceTypeSelector):
             previous_state=previous_state,
             resource_types=[NodeType.Test],
         )
-
-    def expand_selection(
-        self, selected: Set[UniqueId], greedy: bool = False
-    ) -> Tuple[Set[UniqueId], Set[UniqueId]]:
-        # returns original (not greedy for inclusion)
-        # or original | expanded (greedy for exclusion)
-        # separately, returns greedy (to enable later incorporation or trimming)
-        # exposures can't have tests, so this is relatively easy
-        selected_tests = set()
-        for unique_id in self.graph.select_successors(selected):
-            if unique_id in self.manifest.nodes:
-                node = self.manifest.nodes[unique_id]
-                if node.resource_type == NodeType.Test:
-                    selected_tests.add(unique_id)
-
-        results = (selected | selected_tests) if greedy else selected
-
-        return results, selected_tests
-
-    def incorporate_greedy_nodes(
-        self, selected: Set[UniqueId], greedy_nodes: Set[UniqueId] = set()
-    ) -> Set[UniqueId]:
-
-        for unique_id in greedy_nodes:
-            if unique_id in self.manifest.nodes:
-                node = self.manifest.nodes[unique_id]
-                if set(node.depends_on.nodes) <= set(selected):
-                    selected.add(unique_id)
-
-        return selected
 
 
 class TestTask(RunTask):
