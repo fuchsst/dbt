@@ -62,7 +62,7 @@ class NodeSelector(MethodManager):
     def get_nodes_from_criteria(
         self,
         spec: SelectionCriteria
-    ) -> Set[UniqueId]:
+    ) -> (Set[UniqueId], Set[UniqueId]):
         """Get all nodes specified by the single selection criteria.
 
         - collect the directly included nodes
@@ -81,9 +81,12 @@ class NodeSelector(MethodManager):
             )
             return set()
 
-        extras = self.collect_specified_neighbors(spec, collected)
-        result = self.expand_selection(collected | extras, spec.greedy)
-        return result
+        neighbors = self.collect_specified_neighbors(spec, collected)
+        result_nodes, greedy_nodes = self.expand_selection(
+            selected=(collected | neighbors),
+            greedy=spec.greedy
+        )
+        return (result_nodes, greedy_nodes)
 
     def collect_specified_neighbors(
         self, spec: SelectionCriteria, selected: Set[UniqueId]
@@ -106,23 +109,43 @@ class NodeSelector(MethodManager):
             additional.update(self.graph.select_children(selected, depth))
         return additional
 
-    def select_nodes(self, spec: SelectionSpec, greedy_expansion: bool = False) -> Set[UniqueId]:
-        """Select the nodes in the graph according to the spec.
-
-        If the spec is a composite spec (a union, difference, or intersection),
+    def select_nodes_recursively(self, spec: SelectionSpec) -> (Set[UniqueId], Set[UniqueId]):
+        """If the spec is a composite spec (a union, difference, or intersection),
         recurse into its selections and combine them. If the spec is a concrete
         selection criteria, resolve that using the given graph.
         """
         if isinstance(spec, SelectionCriteria):
-            result = self.get_nodes_from_criteria(spec)
+            direct_nodes, greedy_nodes = self.get_nodes_from_criteria(spec)
         else:
-            node_selections = [
-                self.select_nodes(component)
+            bundles = [
+                self.select_nodes_recursively(component)
                 for component in spec
             ]
-            result = spec.combined(node_selections)
+            direct_selections = []
+            greedy_selections = []
+
+            for selected, greedy in bundles:
+                direct_selections.append(selected)
+                greedy_selections.append(selected | greedy)
+
+            direct_nodes = spec.combined(direct_selections)
+            greedy_nodes = spec.combined(greedy_selections)
+
             if spec.expect_exists:
-                alert_non_existence(spec.raw, result)
+                alert_non_existence(spec.raw, direct_nodes)
+
+        return (direct_nodes, greedy_nodes)
+
+    def select_nodes(self, spec: SelectionSpec) -> Set[UniqueId]:
+        """Select the nodes in the graph according to the spec.
+
+        This is the main point of entry for turning a spec into a set of nodes:
+        - Recurse through spec, select by criteria, combine by set operation
+        - Keep track of nodes that are selected directly vs. "greedily"
+        - Return final (unfiltered) selection set
+        """
+        direct_nodes, greedy_nodes = self.select_nodes_recursively(spec)
+        result = self.incorporate_greedy_nodes(direct_nodes, greedy_nodes)
         return result
 
     def _is_graph_member(self, unique_id: UniqueId) -> bool:
@@ -162,8 +185,16 @@ class NodeSelector(MethodManager):
             unique_id for unique_id in selected if self._is_match(unique_id)
         }
 
-    def expand_selection(self, selected: Set[UniqueId], greedy: bool = False) -> Set[UniqueId]:
+    def expand_selection(
+        self, selected: Set[UniqueId], greedy: bool = False
+    ) -> (Set[UniqueId], Set[UniqueId]):
         """Perform selector-specific expansion."""
+        return selected, set()
+
+    def incorporate_greedy_nodes(
+        self, selected: Set[UniqueId], greedily_grabbed: Set[UniqueId] = []
+    ) -> Set[UniqueId]:
+        """Incorporate some nodes from greedy expansion."""
         return selected
 
     def get_selected(self, spec: SelectionSpec) -> Set[UniqueId]:
@@ -179,8 +210,7 @@ class NodeSelector(MethodManager):
                   selected
         """
         selected_nodes = self.select_nodes(spec)
-        expanded_nodes = self.expand_selection(selected_nodes)
-        filtered_nodes = self.filter_selection(expanded_nodes)
+        filtered_nodes = self.filter_selection(selected_nodes)
         return filtered_nodes
 
     def get_graph_queue(self, spec: SelectionSpec) -> GraphQueue:

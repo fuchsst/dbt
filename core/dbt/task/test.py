@@ -161,18 +161,33 @@ class TestSelector(ResourceTypeSelector):
 
     def expand_selection(
         self, selected: Set[UniqueId], greedy: bool = False
-    ) -> Set[UniqueId]:
+    ) -> (Set[UniqueId], Set[UniqueId]):
+        # returns original (not greedy for inclusion)
+        # or original | expanded (greedy for exclusion)
+        # separately, returns greedy (to enable later incorporation or trimming)
         # exposures can't have tests, so this is relatively easy
         selected_tests = set()
         for unique_id in self.graph.select_successors(selected):
             if unique_id in self.manifest.nodes:
                 node = self.manifest.nodes[unique_id]
-                if node.resource_type == NodeType.Test and (
-                    greedy or set(node.depends_on.nodes) <= set(selected)
-                ):
+                if node.resource_type == NodeType.Test:
                     selected_tests.add(unique_id)
 
-        return selected | selected_tests
+        results = (selected | selected_tests) if greedy else selected
+
+        return (results, selected_tests)
+
+    def incorporate_greedy_nodes(
+        self, selected: Set[UniqueId], greedy_nodes: Set[UniqueId] = []
+    ) -> Set[UniqueId]:
+
+        for unique_id in greedy_nodes:
+            if unique_id in self.manifest.nodes:
+                node = self.manifest.nodes[unique_id]
+                if set(node.depends_on.nodes) <= set(selected):
+                    selected.add(unique_id)
+
+        return selected
 
 
 class TestTask(RunTask):
