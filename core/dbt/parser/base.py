@@ -50,17 +50,13 @@ class BaseParser(Generic[FinalValue]):
     def __init__(self, project: Project, manifest: Manifest) -> None:
         self.project = project
         self.manifest = manifest
-        # this should be a superset of [x.path for x in self.manifest.files]
-        # because we fill it via search()
-        self.searched: List[FilePath] = []
 
     @abc.abstractmethod
     def get_paths(self) -> Iterable[FilePath]:
         pass
 
     def search(self) -> List[FilePath]:
-        self.searched = list(self.get_paths())
-        return self.searched
+        return list(self.get_paths())
 
     @abc.abstractmethod
     def parse_file(self, block: FileBlock) -> None:
