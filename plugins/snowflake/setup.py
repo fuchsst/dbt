@@ -49,7 +49,7 @@ setup(
         'dbt-core=={}'.format(package_version),
         'snowflake-connector-python[secure-local-storage]~=2.4.1',
         'requests<3.0.0',
-        'cryptography>=3.2,<4',
+        'cryptography>=3.2,<38',
     ],
     zip_safe=False,
     classifiers=[
